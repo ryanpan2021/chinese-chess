@@ -45,6 +45,16 @@ struct SettingsView: View {
                         Text("思考时间：\(settings.thinkTimeMs) ms")
                     }
                 }
+
+                Section("识别") {
+                    Stepper(value: $settings.visionTimeout, in: 30...600, step: 30) {
+                        Text("识图超时：\(settings.visionTimeout) 秒")
+                    }
+                }
+
+                Section("音效") {
+                    Toggle("走棋 / 将军 / 胜利音效", isOn: $settings.soundEnabled)
+                }
             }
             .navigationTitle("设置")
             .toolbar {

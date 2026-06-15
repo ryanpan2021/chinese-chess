@@ -26,6 +26,14 @@ final class AppSettings: ObservableObject {
     @Published var thinkTimeMs: Int {
         didSet { defaults.set(thinkTimeMs, forKey: Keys.thinkTime) }
     }
+    /// 图片识别超时时间（秒）。
+    @Published var visionTimeout: Int {
+        didSet { defaults.set(visionTimeout, forKey: Keys.visionTimeout) }
+    }
+    /// 是否启用音效。
+    @Published var soundEnabled: Bool {
+        didSet { defaults.set(soundEnabled, forKey: Keys.soundEnabled) }
+    }
 
     private let defaults = UserDefaults.standard
 
@@ -34,6 +42,8 @@ final class AppSettings: ObservableObject {
         static let apiKey = "vision.apiKey"
         static let model = "vision.model"
         static let thinkTime = "engine.thinkTimeMs"
+        static let visionTimeout = "vision.timeoutSec"
+        static let soundEnabled = "game.soundEnabled"
     }
 
     private init() {
@@ -42,6 +52,9 @@ final class AppSettings: ObservableObject {
         visionModel = defaults.string(forKey: Keys.model) ?? "gpt-4o"
         let t = defaults.integer(forKey: Keys.thinkTime)
         thinkTimeMs = t == 0 ? 1000 : t
+        let vt = defaults.integer(forKey: Keys.visionTimeout)
+        visionTimeout = vt == 0 ? 120 : vt
+        soundEnabled = defaults.object(forKey: Keys.soundEnabled) as? Bool ?? true
     }
 
     var visionConfigured: Bool {

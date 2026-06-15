@@ -112,6 +112,7 @@ final class GameViewModel: ObservableObject {
         moveHistory.append(uci)
         lastMove = (from, to)
         clearSelection()
+        SoundManager.play(.move)
 
         if checkGameOver() { return }
 
@@ -162,6 +163,7 @@ final class GameViewModel: ObservableObject {
         state.apply(from: from, to: to)
         moveHistory.append(move)
         lastMove = (from, to)
+        SoundManager.play(.move)
 
         if checkGameOver() { return }
         statusText = turnPrompt()
@@ -201,8 +203,15 @@ final class GameViewModel: ObservableObject {
         statusText = "摆棋中：选子放置，点子删除"
     }
 
-    /// 退出摆棋模式并应用局面。失败（如缺将）返回错误描述。
-    func finishEditing(sideToMove: Side) {
+    /// 退出摆棋模式并应用局面。校验棋子位置，不合理返回错误描述（不退出摆棋）。
+    @discardableResult
+    func finishEditing(sideToMove: Side) -> String? {
+        var probe = state
+        probe.sideToMove = sideToMove
+        if let err = probe.validationError() {
+            statusText = "摆棋错误：\(err)"
+            return err
+        }
         state.sideToMove = sideToMove
         playerSide = sideToMove
         isEditing = false
@@ -213,6 +222,7 @@ final class GameViewModel: ObservableObject {
         customStartFEN = fen
         statusText = engineReady ? turnPrompt() : "请启动引擎"
         Task { await evaluatePosition() }
+        return nil
     }
 
     /// 清空棋盘（仅保留双方将帅在原位，方便摆棋）。
@@ -235,11 +245,14 @@ final class GameViewModel: ObservableObject {
 
     // MARK: - FEN 导入
 
-    /// 导入完整 FEN。成功返回 true。
+    /// 导入完整 FEN。成功返回 nil，失败返回错误描述。
+    /// - Parameter sideOverride: 若指定，则覆盖 FEN 中的走子方（支持选择红先/黑先）。
     @discardableResult
-    func importFEN(_ fen: String) -> Bool {
+    func importFEN(_ fen: String, sideOverride: Side? = nil) -> String? {
         var newState = GameState()
-        guard newState.loadFullFEN(fen) else { return false }
+        guard newState.loadFullFEN(fen) else { return "FEN 格式无效" }
+        if let s = sideOverride { newState.sideToMove = s }
+        if let err = newState.validationError() { return "棋子位置不合理：\(err)" }
         state = newState
         playerSide = state.sideToMove
         moveHistory = []
@@ -250,7 +263,7 @@ final class GameViewModel: ObservableObject {
         clearSelection()
         statusText = engineReady ? turnPrompt() : "请启动引擎"
         Task { await evaluatePosition() }
-        return true
+        return nil
     }
 
     // MARK: - 胜负判断
@@ -263,10 +276,12 @@ final class GameViewModel: ObservableObject {
             resultText = winner == .red ? "红方获胜" : "黑方获胜"
             statusText = resultText!
             clearSelection()
+            SoundManager.play(.win)
             return true
         }
         if state.isKingInCheckOrFacing(side: toMove) {
             statusText = "将军！" + (toMove == .red ? "红方应将" : "黑方应将")
+            SoundManager.play(.check)
         }
         return false
     }

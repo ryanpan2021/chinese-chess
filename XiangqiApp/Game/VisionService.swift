@@ -34,12 +34,14 @@ enum VisionService {
         let baseURL: String
         let apiKey: String
         let model: String
+        let timeout: TimeInterval
         var isConfigured: Bool { !baseURL.isEmpty && !apiKey.isEmpty && !model.isEmpty }
 
         @MainActor init(settings: AppSettings) {
             baseURL = settings.visionBaseURL
             apiKey = settings.visionAPIKey
             model = settings.visionModel
+            timeout = TimeInterval(settings.visionTimeout)
         }
     }
 
@@ -84,9 +86,15 @@ enum VisionService {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        req.timeoutInterval = 60
+        req.timeoutInterval = config.timeout
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let session: URLSession = {
+            let cfg = URLSessionConfiguration.default
+            cfg.timeoutIntervalForRequest = config.timeout
+            cfg.timeoutIntervalForResource = config.timeout
+            return URLSession(configuration: cfg)
+        }()
+        let (data, response) = try await session.data(for: req)
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             let msg = String(data: data, encoding: .utf8) ?? ""
             throw VisionError.http(http.statusCode, String(msg.prefix(200)))

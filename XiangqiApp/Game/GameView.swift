@@ -18,6 +18,9 @@ struct GameView: View {
     @State private var showImagePicker = false
     @State private var recognizing = false
     @State private var visionError: String?
+    /// 图片识别结果，待用户选择先走方后导入。
+    @State private var recognizedFEN: String?
+    @State private var showRecognizedSide = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -61,10 +64,20 @@ struct GameView: View {
         }
         .alert("导入 FEN", isPresented: $showFENImport) {
             TextField("粘贴 FEN", text: $fenInput)
-            Button("导入") { doImportFEN() }
+            Button("红方先走") { doImportFEN(side: .red) }
+            Button("黑方先走") { doImportFEN(side: .black) }
+            Button("按 FEN 走子方") { doImportFEN(side: nil) }
             Button("取消", role: .cancel) {}
         } message: {
             Text(fenError ?? "例：rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w")
+        }
+        .alert("识别成功，谁先走？", isPresented: $showRecognizedSide) {
+            Button("红方先走") { applyRecognized(side: .red) }
+            Button("黑方先走") { applyRecognized(side: .black) }
+            Button("按识别走子方") { applyRecognized(side: nil) }
+            Button("取消", role: .cancel) { recognizedFEN = nil }
+        } message: {
+            Text(recognizedFEN.map { "FEN：\($0)" } ?? "")
         }
     }
 
@@ -98,12 +111,12 @@ struct GameView: View {
         .padding(.top, 2)
     }
 
-    private func doImportFEN() {
-        if vm.importFEN(fenInput) {
-            fenError = nil
-        } else {
-            fenError = "FEN 格式无效，请重试"
+    private func doImportFEN(side: Side?) {
+        if let err = vm.importFEN(fenInput, sideOverride: side) {
+            fenError = err
             showFENImport = true
+        } else {
+            fenError = nil
         }
     }
 
@@ -114,14 +127,23 @@ struct GameView: View {
             do {
                 let fen = try await VisionService.recognizeFEN(from: image, settings: settings)
                 recognizing = false
-                if !vm.importFEN(fen) {
-                    visionError = "识别结果不是有效 FEN：\(fen)"
-                }
+                recognizedFEN = fen
+                showRecognizedSide = true
             } catch {
                 recognizing = false
                 visionError = "识别失败：\(error.localizedDescription)"
             }
         }
+    }
+
+    private func applyRecognized(side: Side?) {
+        guard let fen = recognizedFEN else { return }
+        if let err = vm.importFEN(fen, sideOverride: side) {
+            visionError = "识别结果不合理：\(err)（\(fen)）"
+        } else {
+            visionError = nil
+        }
+        recognizedFEN = nil
     }
 }
 

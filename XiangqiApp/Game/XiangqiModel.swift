@@ -146,6 +146,104 @@ struct GameState {
         return board[sq.row][sq.col]
     }
 
+    // MARK: - 局面合法性校验
+
+    /// 校验棋盘上棋子位置是否合理。返回 nil 表示合理，否则返回错误描述。
+    /// 检查项：双方各且仅有一个将、将帅在九宫内、仕/相/兵在合理区域、子力数量上限、两将不照面。
+    func validationError() -> String? {
+        var counts: [Side: [PieceKind: Int]] = [.red: [:], .black: [:]]
+
+        for r in 0..<10 {
+            for c in 0..<9 {
+                guard let p = board[r][c] else { continue }
+                let sq = Square(row: r, col: c)
+                counts[p.side]![p.kind, default: 0] += 1
+
+                switch p.kind {
+                case .king:
+                    if !inPalaceCheck(sq, side: p.side) {
+                        return "\(sideName(p.side))将帅不在九宫内"
+                    }
+                case .advisor:
+                    if !inPalaceCheck(sq, side: p.side) {
+                        return "\(sideName(p.side))士仕不在九宫内"
+                    }
+                case .bishop:
+                    if !bishopValidRow(sq, side: p.side) {
+                        return "\(sideName(p.side))相象位置不合理"
+                    }
+                case .pawn:
+                    if !pawnValidRow(sq, side: p.side) {
+                        return "\(sideName(p.side))兵卒位置不合理"
+                    }
+                default:
+                    break
+                }
+            }
+        }
+
+        let limits: [PieceKind: Int] = [
+            .king: 1, .advisor: 2, .bishop: 2,
+            .knight: 2, .rook: 2, .cannon: 2, .pawn: 5
+        ]
+        for side in [Side.red, .black] {
+            for (kind, maxN) in limits {
+                let n = counts[side]![kind, default: 0]
+                if kind == .king {
+                    if n != 1 { return "\(sideName(side))必须且仅有一个将帅" }
+                } else if n > maxN {
+                    return "\(sideName(side))\(kindName(kind))数量过多（\(n) > \(maxN)）"
+                }
+            }
+        }
+
+        // 两将不可照面
+        if let rk = kingSquare(side: .red), let bk = kingSquare(side: .black),
+           rk.col == bk.col {
+            let lo = min(rk.row, bk.row) + 1
+            let hi = max(rk.row, bk.row)
+            var blocked = false
+            for r in lo..<hi where board[r][rk.col] != nil { blocked = true; break }
+            if !blocked { return "红黑双将照面（白脸将）" }
+        }
+
+        return nil
+    }
+
+    private func inPalaceCheck(_ sq: Square, side: Side) -> Bool {
+        guard sq.col >= 3, sq.col <= 5 else { return false }
+        if side == .red { return sq.row >= 7 && sq.row <= 9 }
+        return sq.row >= 0 && sq.row <= 2
+    }
+
+    private func bishopValidRow(_ sq: Square, side: Side) -> Bool {
+        // 相/象不可过河，且只能停在固定的 7 个点位
+        let redPoints: Set<[Int]> = [[9,2],[9,6],[7,0],[7,4],[7,8],[5,2],[5,6]]
+        let blackPoints: Set<[Int]> = [[0,2],[0,6],[2,0],[2,4],[2,8],[4,2],[4,6]]
+        let pt = [sq.row, sq.col]
+        return side == .red ? redPoints.contains(pt) : blackPoints.contains(pt)
+    }
+
+    private func pawnValidRow(_ sq: Square, side: Side) -> Bool {
+        // 红兵不可出现在 row 7..9（己方底三行），黑卒不可出现在 row 0..2
+        if side == .red { return sq.row <= 6 }
+        return sq.row >= 3
+    }
+
+    private func sideName(_ side: Side) -> String { side == .red ? "红方" : "黑方" }
+
+    private func kindName(_ kind: PieceKind) -> String {
+        switch kind {
+        case .rook: return "车"
+        case .knight: return "马"
+        case .cannon: return "炮"
+        case .bishop: return "相象"
+        case .advisor: return "士仕"
+        case .king: return "将帅"
+        case .pawn: return "兵卒"
+        }
+    }
+
     // MARK: - FEN / UCI 转换
 
     /// 生成完整 FEN（含走子方），用于喂给引擎。
