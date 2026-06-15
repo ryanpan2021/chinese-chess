@@ -45,6 +45,14 @@ final class GameViewModel: ObservableObject {
     /// 玩家执子方（可在摆棋后切换）。
     @Published var playerSide: Side = .red
 
+    /// 自动走棋：开启后红黑双方都由引擎按最优着法走。
+    @Published var autoPlay = false {
+        didSet {
+            guard autoPlay != oldValue else { return }
+            if autoPlay { startAutoPlay() }
+        }
+    }
+
     private let engine = PikafishEngine()
     private let settings = AppSettings.shared
     /// 记录从开局以来的全部 UCI 着法，用于 position startpos moves。
@@ -79,7 +87,7 @@ final class GameViewModel: ObservableObject {
             return
         }
         guard resultText == nil else { return }
-        guard !aiThinking, state.sideToMove == playerSide else { return }
+        guard !aiThinking, !autoPlay, state.sideToMove == playerSide else { return }
 
         if let sel = selected {
             if legalTargets.contains(sq) {
@@ -150,6 +158,20 @@ final class GameViewModel: ObservableObject {
         }
     }
 
+    /// 启动自动走棋循环：红黑双方均由引擎按最优着法走。
+    private func startAutoPlay() {
+        guard engineReady, resultText == nil, !aiThinking else { return }
+        aiThinking = true
+        statusText = "自动走棋中…"
+        clearSelection()
+        applyPositionToEngine()
+        Task {
+            let result = await engine.search(moveTimeMs: settings.thinkTimeMs)
+            applyEngineMove(result.bestMove, continueAI: true)
+            await evaluatePosition()
+        }
+    }
+
     private func applyAIMove(_ move: String) {
         applyEngineMove(move, continueAI: false)
     }
@@ -167,6 +189,10 @@ final class GameViewModel: ObservableObject {
 
         if checkGameOver() { return }
         statusText = turnPrompt()
+
+        if continueAI && autoPlay {
+            startAutoPlay()
+        }
     }
 
     // MARK: - 局面评估
@@ -301,6 +327,7 @@ final class GameViewModel: ObservableObject {
         resultText = nil
         isEditing = false
         paletteSelection = nil
+        autoPlay = false
         clearSelection()
         redWinProb = 0.5
         scoreText = "--"

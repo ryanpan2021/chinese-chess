@@ -92,7 +92,11 @@ struct GameView: View {
                     .buttonStyle(.bordered)
                 Button("电脑走一步") { vm.autoMoveOnce() }
                     .buttonStyle(.bordered)
-                    .disabled(!vm.engineReady || vm.aiThinking || vm.resultText != nil)
+                    .disabled(!vm.engineReady || vm.aiThinking || vm.resultText != nil || vm.autoPlay)
+                Toggle("自动走棋", isOn: $vm.autoPlay)
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .disabled(!vm.engineReady || vm.resultText != nil || vm.isEditing)
             }
             HStack(spacing: 12) {
                 Button("摆棋") { vm.enterEditing() }
