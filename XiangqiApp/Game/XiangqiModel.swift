@@ -1,0 +1,213 @@
+//
+//  XiangqiModel.swift
+//  XiangqiApp
+//
+//  中国象棋核心数据模型：棋子定义、棋盘状态、坐标与 FEN/UCI 转换、走子规则校验。
+//
+//  坐标约定（与 UCI / FEN 对齐）：
+//   - 棋盘 9 列(file: a..i) × 10 行(rank: 0..9)。
+//   - 内部用 row(0..9) / col(0..8) 表示，row 0 在屏幕顶部 = FEN 第一段(黑方底线 rank9)。
+//   - 即 UCI rank = 9 - row，UCI file = col（a..i）。
+//
+
+import Foundation
+
+/// 棋子颜色（红先行）。
+enum Side {
+    case red, black
+    var opposite: Side { self == .red ? .black : .red }
+}
+
+/// 棋子兵种。
+enum PieceKind: Hashable {
+    case rook    // 车 R/r
+    case knight  // 马 N/n
+    case cannon  // 炮 C/c
+    case bishop  // 相/象 B/b
+    case advisor // 仕/士 A/a
+    case king    // 帅/将 K/k
+    case pawn    // 兵/卒 P/p
+}
+
+/// 一枚棋子。
+struct Piece: Equatable {
+    let kind: PieceKind
+    let side: Side
+
+    /// FEN 字符：红方大写，黑方小写。
+    var fenChar: Character {
+        let base: Character
+        switch kind {
+        case .rook: base = "r"
+        case .knight: base = "n"
+        case .cannon: base = "c"
+        case .bishop: base = "b"
+        case .advisor: base = "a"
+        case .king: base = "k"
+        case .pawn: base = "p"
+        }
+        return side == .red ? Character(base.uppercased()) : base
+    }
+
+    /// 棋盘上显示的汉字。
+    var displayName: String {
+        switch (kind, side) {
+        case (.rook, .red): return "车";    case (.rook, .black): return "車"
+        case (.knight, .red): return "马";  case (.knight, .black): return "馬"
+        case (.cannon, .red): return "炮";  case (.cannon, .black): return "砲"
+        case (.bishop, .red): return "相";  case (.bishop, .black): return "象"
+        case (.advisor, .red): return "仕"; case (.advisor, .black): return "士"
+        case (.king, .red): return "帅";    case (.king, .black): return "将"
+        case (.pawn, .red): return "兵";    case (.pawn, .black): return "卒"
+        }
+    }
+
+    static func from(fenChar c: Character) -> Piece? {
+        let side: Side = c.isUppercase ? .red : .black
+        let kind: PieceKind
+        switch Character(c.lowercased()) {
+        case "r": kind = .rook
+        case "n": kind = .knight
+        case "c": kind = .cannon
+        case "b": kind = .bishop
+        case "a": kind = .advisor
+        case "k": kind = .king
+        case "p": kind = .pawn
+        default: return nil
+        }
+        return Piece(kind: kind, side: side)
+    }
+}
+
+/// 棋盘格子坐标。row 0 在顶部，col 0 在左侧。
+struct Square: Equatable, Hashable {
+    var row: Int  // 0..9
+    var col: Int  // 0..8
+
+    var isValid: Bool { row >= 0 && row <= 9 && col >= 0 && col <= 8 }
+}
+
+/// 棋局状态：棋盘、走子方，并提供合法着法生成与 FEN/UCI 转换。
+struct GameState {
+    /// board[row][col]，nil 表示空格。
+    var board: [[Piece?]]
+    var sideToMove: Side
+
+    init() {
+        board = Array(repeating: Array(repeating: nil, count: 9), count: 10)
+        sideToMove = .red
+        setupStartPosition()
+    }
+
+    mutating func setupStartPosition() {
+        let start = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR"
+        load(fenBoard: start)
+        sideToMove = .red
+    }
+
+    /// 仅解析 FEN 棋盘段（不含走子方等）。
+    mutating func load(fenBoard: String) {
+        board = Array(repeating: Array(repeating: nil, count: 9), count: 10)
+        let rows = fenBoard.split(separator: "/")
+        for (r, rowStr) in rows.enumerated() where r < 10 {
+            var c = 0
+            for ch in rowStr {
+                if let digit = ch.wholeNumberValue {
+                    c += digit
+                } else if let piece = Piece.from(fenChar: ch) {
+                    if c < 9 { board[r][c] = piece }
+                    c += 1
+                }
+            }
+        }
+    }
+
+    /// 解析完整 FEN（含走子方）。失败返回 false 且不修改自身。
+    /// 例： "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
+    @discardableResult
+    mutating func loadFullFEN(_ fen: String) -> Bool {
+        let trimmed = fen.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true)
+        guard let boardPart = parts.first else { return false }
+        let rowCount = boardPart.split(separator: "/").count
+        guard rowCount == 10 else { return false }
+        load(fenBoard: String(boardPart))
+        if parts.count >= 2 {
+            sideToMove = (parts[1] == "b") ? .black : .red
+        } else {
+            sideToMove = .red
+        }
+        return true
+    }
+
+
+    func piece(at sq: Square) -> Piece? {
+        guard sq.isValid else { return nil }
+        return board[sq.row][sq.col]
+    }
+
+    // MARK: - FEN / UCI 转换
+
+    /// 生成完整 FEN（含走子方），用于喂给引擎。
+    func fen() -> String {
+        var rowStrings: [String] = []
+        for r in 0..<10 {
+            var s = ""
+            var empty = 0
+            for c in 0..<9 {
+                if let p = board[r][c] {
+                    if empty > 0 { s += String(empty); empty = 0 }
+                    s.append(p.fenChar)
+                } else {
+                    empty += 1
+                }
+            }
+            if empty > 0 { s += String(empty) }
+            rowStrings.append(s)
+        }
+        let boardPart = rowStrings.joined(separator: "/")
+        let side = sideToMove == .red ? "w" : "b"
+        return "\(boardPart) \(side) - - 0 1"
+    }
+
+    /// 把内部坐标转为 UCI 文件字符（a..i）+ 行号（0..9）。
+    static func uciSquare(_ sq: Square) -> String {
+        let file = Character(UnicodeScalar(UInt8(97 + sq.col)))   // 'a' + col
+        let rank = 9 - sq.row
+        return "\(file)\(rank)"
+    }
+
+    static func square(fromUCI s: Substring) -> Square? {
+        let chars = Array(s)
+        guard chars.count == 2,
+              let fileVal = chars[0].asciiValue, fileVal >= 97, fileVal <= 105,
+              let rank = chars[1].wholeNumberValue else { return nil }
+        let col = Int(fileVal) - 97
+        let row = 9 - rank
+        return Square(row: row, col: col)
+    }
+
+    /// 把一步着法转为 UCI，例如 "h2e2"。
+    static func uciMove(from: Square, to: Square) -> String {
+        uciSquare(from) + uciSquare(to)
+    }
+
+    /// 解析引擎返回的 UCI 着法为起止坐标。
+    static func parseUCIMove(_ move: String) -> (from: Square, to: Square)? {
+        guard move.count == 4 else { return nil }
+        let s = Array(move)
+        guard let from = square(fromUCI: Substring(String(s[0...1]))),
+              let to = square(fromUCI: Substring(String(s[2...3]))) else { return nil }
+        return (from, to)
+    }
+
+    // MARK: - 落子
+
+    /// 执行一步着法（不做合法性校验，调用方应先校验）。
+    mutating func apply(from: Square, to: Square) {
+        guard from.isValid, to.isValid else { return }
+        board[to.row][to.col] = board[from.row][from.col]
+        board[from.row][from.col] = nil
+        sideToMove = sideToMove.opposite
+    }
+}

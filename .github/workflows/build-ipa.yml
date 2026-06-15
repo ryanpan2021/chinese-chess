@@ -1,0 +1,53 @@
+name: Build Unsigned IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 15.4
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          xcodegen generate
+          # Xcode 15.4 不支持 objectVersion 77，降级到 56
+          sed -i '' 's/objectVersion = 77;/objectVersion = 56;/' XiangqiApp.xcodeproj/project.pbxproj
+
+      - name: Build (no code signing)
+        run: |
+          xcodebuild \
+            -project XiangqiApp.xcodeproj \
+            -scheme XiangqiApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH="build/Build/Products/Release-iphoneos/XiangqiApp.app"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r XiangqiApp-unsigned.ipa Payload
+          rm -rf Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XiangqiApp-unsigned-ipa
+          path: XiangqiApp-unsigned.ipa
+          if-no-files-found: error

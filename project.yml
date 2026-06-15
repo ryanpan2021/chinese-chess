@@ -1,0 +1,72 @@
+name: XiangqiApp
+options:
+  bundleIdPrefix: com.xiangqi
+  xcodeVersion: "15.4"
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_OBJC_BRIDGING_HEADER: XiangqiApp/XiangqiApp-Bridging-Header.h
+    CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+    CLANG_CXX_LIBRARY: "libc++"
+    GCC_C_LANGUAGE_STANDARD: "c11"
+    # 关闭 C++ 异常以匹配 Pikafish 的 -fno-exceptions 编译习惯
+    GCC_ENABLE_CPP_EXCEPTIONS: NO
+    GCC_ENABLE_CPP_RTTI: YES
+    # 递归包含 Pikafish 头文件目录
+    HEADER_SEARCH_PATHS:
+      - $(SRCROOT)/XiangqiApp/Engine/pikafish
+      - $(SRCROOT)/XiangqiApp/Engine/pikafish/nnue
+      - $(SRCROOT)/XiangqiApp/Engine/pikafish/nnue/features
+      - $(SRCROOT)/XiangqiApp/Engine/pikafish/nnue/layers
+      - $(SRCROOT)/XiangqiApp/Engine/pikafish/external
+      - $(SRCROOT)/XiangqiApp/Engine/pikafish/external/common
+      - $(SRCROOT)/XiangqiApp/Engine/pikafish/external/decompress
+    # 通用 Pikafish 宏（与架构无关的部分）
+    GCC_PREPROCESSOR_DEFINITIONS:
+      - $(inherited)
+      - NDEBUG=1
+      - USE_PTHREADS=1
+      - IS_64BIT=1
+      - ZSTD_DISABLE_ASM=1
+    # arm64 真机：启用 NEON + dotprod
+    "GCC_PREPROCESSOR_DEFINITIONS[arch=arm64]":
+      - $(inherited)
+      - USE_POPCNT=1
+      - USE_NEON=8
+      - USE_NEON_DOTPROD=1
+    # x86_64 模拟器（Intel Mac）：启用 SSE41 + POPCNT
+    "GCC_PREPROCESSOR_DEFINITIONS[arch=x86_64]":
+      - $(inherited)
+      - USE_POPCNT=1
+      - USE_SSE=1
+      - USE_SSE2=1
+      - USE_SSSE3=1
+      - USE_SSE41=1
+    # 对应架构的指令集开关
+    "OTHER_CFLAGS[arch=arm64]": "-march=armv8.2-a+dotprod"
+    "OTHER_CPLUSPLUSFLAGS[arch=arm64]": "-march=armv8.2-a+dotprod"
+    "OTHER_CFLAGS[arch=x86_64]": "-msse -msse2 -mssse3 -msse4.1 -mpopcnt"
+    "OTHER_CPLUSPLUSFLAGS[arch=x86_64]": "-msse -msse2 -mssse3 -msse4.1 -mpopcnt"
+
+targets:
+  XiangqiApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: XiangqiApp
+        # 排除参考用的 Makefile，避免被当作构建脚本
+        excludes:
+          - "Engine/pikafish/Makefile"
+          - "README.md"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.xiangqi.XiangqiApp
+        INFOPLIST_FILE: XiangqiApp/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        # 真机签名留空，模拟器无需签名；真机调试时在 Xcode 里选你的开发团队
+        CODE_SIGN_STYLE: Automatic
