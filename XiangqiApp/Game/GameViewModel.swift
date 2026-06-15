@@ -292,6 +292,21 @@ final class GameViewModel: ObservableObject {
         return nil
     }
 
+    /// 将 FEN 局面载入摆棋模式（不校验，供识别结果不合理时人工修正）。
+    func loadFENForEditing(_ fen: String) {
+        var newState = GameState()
+        guard newState.loadFullFEN(fen) else { return }
+        state = newState
+        moveHistory = []
+        customStartFEN = nil
+        lastMove = nil
+        resultText = nil
+        autoPlay = false
+        isEditing = true
+        paletteSelection = nil
+        clearSelection()
+    }
+
     // MARK: - 胜负判断
 
     @discardableResult

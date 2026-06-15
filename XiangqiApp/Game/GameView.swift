@@ -143,7 +143,9 @@ struct GameView: View {
     private func applyRecognized(side: Side?) {
         guard let fen = recognizedFEN else { return }
         if let err = vm.importFEN(fen, sideOverride: side) {
-            visionError = "识别结果不合理：\(err)（\(fen)）"
+            vm.loadFENForEditing(fen)
+            vm.statusText = "识别结果不合理：\(err)，已进入摆棋模式，请手动修正"
+            visionError = nil
         } else {
             visionError = nil
         }
