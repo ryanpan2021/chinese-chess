@@ -41,6 +41,11 @@ struct SettingsView: View {
                 }
 
                 Section("引擎") {
+                    Picker("电脑执方", selection: $settings.engineSide) {
+                        ForEach(EngineSide.allCases, id: \.self) { side in
+                            Text(side.label).tag(side)
+                        }
+                    }
                     Stepper(value: $settings.thinkTimeMs, in: 200...10000, step: 200) {
                         Text("思考时间：\(settings.thinkTimeMs) ms")
                     }

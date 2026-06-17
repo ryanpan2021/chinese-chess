@@ -55,7 +55,7 @@ struct GameView: View {
             Spacer(minLength: 0)
         }
         .padding()
-        .sheet(isPresented: $showSettings) { SettingsView() }
+        .sheet(isPresented: $showSettings, onDismiss: { vm.applyEngineSideSetting() }) { SettingsView() }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker { image in
                 showImagePicker = false

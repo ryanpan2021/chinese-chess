@@ -45,6 +45,12 @@ final class GameViewModel: ObservableObject {
     /// 玩家执子方（可在摆棋后切换）。
     @Published var playerSide: Side = .red
 
+    /// 电脑执方（取自设置）。off 时不自动应招。
+    private var engineSide: EngineSide { settings.engineSide }
+
+    /// 玩家是否需要翻转棋盘显示（执黑时翻转，使己方在底部）。
+    var boardFlipped: Bool { playerSide == .black }
+
     /// 自动走棋：开启后红黑双方都由引擎按最优着法走。
     @Published var autoPlay = false {
         didSet {
@@ -74,7 +80,10 @@ final class GameViewModel: ObservableObject {
             }
             engineReady = engine.isReady
             statusText = engineReady ? turnPrompt() : "引擎未就绪"
-            if engineReady { await evaluatePosition() }
+            if engineReady {
+                await evaluatePosition()
+                maybeEngineMove()
+            }
         }
     }
 
@@ -124,11 +133,45 @@ final class GameViewModel: ObservableObject {
 
         if checkGameOver() { return }
 
-        statusText = "AI 思考中…"
-        askAI()
+        if engineSide != .off {
+            statusText = "AI 思考中…"
+            askAI()
+        } else {
+            statusText = turnPrompt()
+            Task { await evaluatePosition() }
+        }
     }
 
     // MARK: - AI
+
+    /// 若当前走子方应由电脑执子，则自动应招一步。
+    private func maybeEngineMove() {
+        guard engineReady, resultText == nil, !aiThinking, !autoPlay, !isEditing else { return }
+        switch engineSide {
+        case .red where state.sideToMove == .red,
+             .black where state.sideToMove == .black:
+            askAI()
+        default:
+            break
+        }
+    }
+
+    /// 根据电脑执方推导玩家执方：电脑执红则玩家执黑，反之亦然；关闭时用 fallback。
+    private func preferredPlayerSide(default fallback: Side) -> Side {
+        switch engineSide {
+        case .red: return .black
+        case .black: return .red
+        case .off: return fallback
+        }
+    }
+
+    /// 设置页修改「电脑执方」后调用：更新玩家执方与棋盘朝向，并在轮到电脑时自动应招。
+    func applyEngineSideSetting() {
+        guard !isEditing else { return }
+        playerSide = preferredPlayerSide(default: playerSide)
+        objectWillChange.send()
+        maybeEngineMove()
+    }
 
     private func askAI() {
         guard engineReady else {
@@ -174,6 +217,7 @@ final class GameViewModel: ObservableObject {
 
     private func applyAIMove(_ move: String) {
         applyEngineMove(move, continueAI: false)
+        // 应招后若仍轮到电脑（如双方都设为电脑的极端情况一般不会发生），交给 maybeEngineMove 兜底。
     }
 
     private func applyEngineMove(_ move: String, continueAI: Bool) {
@@ -247,7 +291,7 @@ final class GameViewModel: ObservableObject {
         let fen = state.fen()
         customStartFEN = fen
         statusText = engineReady ? turnPrompt() : "请启动引擎"
-        Task { await evaluatePosition() }
+        Task { await evaluatePosition(); maybeEngineMove() }
         return nil
     }
 
@@ -273,14 +317,21 @@ final class GameViewModel: ObservableObject {
 
     /// 导入完整 FEN。成功返回 nil，失败返回错误描述。
     /// - Parameter sideOverride: 若指定，则覆盖 FEN 中的走子方（支持选择红先/黑先）。
+    ///
+    /// 自动朝向归一化：若识别/粘贴的棋盘是反向朝向（红帅在上方），
+    /// 先整体旋转 180° 回标准朝向，避免「棋子位置不合理」误报。
     @discardableResult
     func importFEN(_ fen: String, sideOverride: Side? = nil) -> String? {
         var newState = GameState()
         guard newState.loadFullFEN(fen) else { return "FEN 格式无效" }
+        // 反向朝向则旋转归一化到标准朝向（红帅在下方）
+        if GameState.isStandardOrientation(newState.board) == false {
+            newState.board = GameState.rotated180(newState.board)
+        }
         if let s = sideOverride { newState.sideToMove = s }
         if let err = newState.validationError() { return "棋子位置不合理：\(err)" }
         state = newState
-        playerSide = state.sideToMove
+        playerSide = preferredPlayerSide(default: state.sideToMove)
         moveHistory = []
         customStartFEN = state.fen()
         lastMove = nil
@@ -288,14 +339,18 @@ final class GameViewModel: ObservableObject {
         isEditing = false
         clearSelection()
         statusText = engineReady ? turnPrompt() : "请启动引擎"
-        Task { await evaluatePosition() }
+        Task { await evaluatePosition(); maybeEngineMove() }
         return nil
     }
 
     /// 将 FEN 局面载入摆棋模式（不校验，供识别结果不合理时人工修正）。
+    /// 同样做朝向归一化，便于人工在标准朝向下修正。
     func loadFENForEditing(_ fen: String) {
         var newState = GameState()
         guard newState.loadFullFEN(fen) else { return }
+        if GameState.isStandardOrientation(newState.board) == false {
+            newState.board = GameState.rotated180(newState.board)
+        }
         state = newState
         moveHistory = []
         customStartFEN = nil
@@ -337,7 +392,7 @@ final class GameViewModel: ObservableObject {
         state = GameState()
         moveHistory = []
         customStartFEN = nil
-        playerSide = .red
+        playerSide = preferredPlayerSide(default: .red)
         lastMove = nil
         resultText = nil
         isEditing = false
@@ -347,6 +402,6 @@ final class GameViewModel: ObservableObject {
         redWinProb = 0.5
         scoreText = "--"
         statusText = engineReady ? turnPrompt() : "点击「启动引擎」开始"
-        if engineReady { Task { await evaluatePosition() } }
+        if engineReady { Task { await evaluatePosition(); maybeEngineMove() } }
     }
 }

@@ -146,6 +146,42 @@ struct GameState {
         return board[sq.row][sq.col]
     }
 
+    // MARK: - 棋盘朝向
+
+    /// 返回把棋盘整体旋转 180° 后的棋盘（row/col 同时镜像）。
+    /// 用于将「反向朝向」的局面归一化到标准朝向（红方底线在 row 9）。
+    static func rotated180(_ b: [[Piece?]]) -> [[Piece?]] {
+        var out = Array(repeating: Array<Piece?>(repeating: nil, count: 9), count: 10)
+        for r in 0..<10 {
+            for c in 0..<9 {
+                out[9 - r][8 - c] = b[r][c]
+            }
+        }
+        return out
+    }
+
+    /// 判断该棋盘是否为标准朝向（红帅在下三行九宫、黑将在上三行九宫）。
+    /// 用于导入时判断是否需要旋转归一化。返回 nil 表示无法判定（缺将）。
+    static func isStandardOrientation(_ b: [[Piece?]]) -> Bool? {
+        var redKing: Square?
+        var blackKing: Square?
+        for r in 0..<10 {
+            for c in 0..<9 {
+                if let p = b[r][c], p.kind == .king {
+                    if p.side == .red { redKing = Square(row: r, col: c) }
+                    else { blackKing = Square(row: r, col: c) }
+                }
+            }
+        }
+        guard let rk = redKing, let bk = blackKing else { return nil }
+        // 标准朝向：红帅在下方(row 7..9)，黑将在上方(row 0..2)
+        let standard = rk.row >= 7 && bk.row <= 2
+        let flipped = rk.row <= 2 && bk.row >= 7
+        if standard { return true }
+        if flipped { return false }
+        return nil
+    }
+
     // MARK: - 局面合法性校验
 
     /// 校验棋盘上棋子位置是否合理。返回 nil 表示合理，否则返回错误描述。

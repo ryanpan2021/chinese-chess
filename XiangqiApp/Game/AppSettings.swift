@@ -8,6 +8,21 @@
 import Foundation
 import Combine
 
+/// 电脑（引擎）执方设置。
+enum EngineSide: String, CaseIterable {
+    case red    // 电脑执红，玩家执黑
+    case black  // 电脑执黑，玩家执红
+    case off    // 关闭，双方纯手动/手动触发
+
+    var label: String {
+        switch self {
+        case .red: return "电脑执红"
+        case .black: return "电脑执黑"
+        case .off: return "关闭"
+        }
+    }
+}
+
 @MainActor
 final class AppSettings: ObservableObject {
 
@@ -34,6 +49,10 @@ final class AppSettings: ObservableObject {
     @Published var soundEnabled: Bool {
         didSet { defaults.set(soundEnabled, forKey: Keys.soundEnabled) }
     }
+    /// 电脑执方（红/黑/关闭）。
+    @Published var engineSide: EngineSide {
+        didSet { defaults.set(engineSide.rawValue, forKey: Keys.engineSide) }
+    }
 
     private let defaults = UserDefaults.standard
 
@@ -44,6 +63,7 @@ final class AppSettings: ObservableObject {
         static let thinkTime = "engine.thinkTimeMs"
         static let visionTimeout = "vision.timeoutSec"
         static let soundEnabled = "game.soundEnabled"
+        static let engineSide = "engine.side"
     }
 
     private init() {
@@ -55,6 +75,7 @@ final class AppSettings: ObservableObject {
         let vt = defaults.integer(forKey: Keys.visionTimeout)
         visionTimeout = vt == 0 ? 120 : vt
         soundEnabled = defaults.object(forKey: Keys.soundEnabled) as? Bool ?? true
+        engineSide = EngineSide(rawValue: defaults.string(forKey: Keys.engineSide) ?? "") ?? .black
     }
 
     var visionConfigured: Bool {

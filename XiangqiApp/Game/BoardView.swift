@@ -84,8 +84,15 @@ struct BoardView: View {
         .aspectRatio(9.0 / 10.0, contentMode: .fit)
     }
 
+    /// 把棋盘逻辑坐标转换为显示坐标。玩家执黑(翻转)时整体镜像，使己方在底部。
+    private func displaySquare(_ sq: Square) -> Square {
+        guard vm.boardFlipped else { return sq }
+        return Square(row: 9 - sq.row, col: 8 - sq.col)
+    }
+
     private func point(_ sq: Square, cell: CGFloat, ox: CGFloat, oy: CGFloat) -> CGPoint {
-        CGPoint(x: ox + CGFloat(sq.col) * cell, y: oy + CGFloat(sq.row) * cell)
+        let d = displaySquare(sq)
+        return CGPoint(x: ox + CGFloat(d.col) * cell, y: oy + CGFloat(d.row) * cell)
     }
 
     private func marker(at sq: Square, cell: CGFloat, ox: CGFloat, oy: CGFloat, color: Color) -> some View {
