@@ -48,8 +48,14 @@ final class GameViewModel: ObservableObject {
     /// 电脑执方（取自设置）。off 时不自动应招。
     private var engineSide: EngineSide { settings.engineSide }
 
-    /// 玩家是否需要翻转棋盘显示（执黑时翻转，使己方在底部）。
-    var boardFlipped: Bool { playerSide == .black }
+    /// 棋盘是否翻转显示（红上黑下）。可随时手动切换，与执方/电脑执方无关。
+    /// 默认根据玩家执方初始化（执黑则翻转，使己方在底部），之后用户可自由翻转。
+    @Published var boardFlipped: Bool = false
+
+    /// 手动翻转棋盘（红上黑下 ↔ 红下黑上）。
+    func toggleBoardFlip() {
+        boardFlipped.toggle()
+    }
 
     /// 自动走棋：开启后红黑双方都由引擎按最优着法走。
     @Published var autoPlay = false {
@@ -66,6 +72,59 @@ final class GameViewModel: ObservableObject {
     private var moveHistory: [String] = []
     /// 当摆棋/导入产生自定义起始局面时记录其 FEN；nil 表示标准开局。
     private var customStartFEN: String?
+
+    // MARK: - 悔棋历史
+
+    /// 每走一步前的局面快照（含状态与最近一步高亮），用于逐步回退。
+    private struct Snapshot {
+        let state: GameState
+        let lastMove: (from: Square, to: Square)?
+        let moveCount: Int
+    }
+    /// 局面快照栈：栈底为初始局面（新局/摆棋/导入后的起点）。
+    @Published private(set) var undoStack: [Snapshot] = []
+
+    /// 是否可悔棋（已走至少一步）。
+    var canUndo: Bool { !undoStack.isEmpty }
+
+    /// 在「即将走子」前压入当前局面快照。
+    private func pushSnapshot() {
+        undoStack.append(Snapshot(state: state, lastMove: lastMove, moveCount: moveHistory.count))
+    }
+
+    /// 重置悔棋历史（新局/摆棋/导入时调用，确立新的回退底线）。
+    private func resetHistory() {
+        undoStack.removeAll()
+    }
+
+    /// 悔棋一步：回退到上一手之前的局面（无论红黑）。
+    func undoMove() {
+        guard !isEditing, !aiThinking, canUndo else { return }
+        autoPlay = false
+        let snap = undoStack.removeLast()
+        restore(snap)
+    }
+
+    /// 悔棋到底：回退到初始局面（新局或摆棋/导入起点）。
+    func undoAll() {
+        guard !isEditing, !aiThinking, canUndo else { return }
+        autoPlay = false
+        let snap = undoStack.first!
+        undoStack.removeAll()
+        restore(snap)
+    }
+
+    private func restore(_ snap: Snapshot) {
+        state = snap.state
+        lastMove = snap.lastMove
+        if moveHistory.count > snap.moveCount {
+            moveHistory.removeLast(moveHistory.count - snap.moveCount)
+        }
+        resultText = nil
+        clearSelection()
+        statusText = engineReady ? turnPrompt() : "请启动引擎"
+        Task { await evaluatePosition() }
+    }
 
     // MARK: - 引擎
 
@@ -124,6 +183,7 @@ final class GameViewModel: ObservableObject {
     }
 
     private func performPlayerMove(from: Square, to: Square) {
+        pushSnapshot()
         let uci = GameState.uciMove(from: from, to: to)
         state.apply(from: from, to: to)
         moveHistory.append(uci)
@@ -226,6 +286,7 @@ final class GameViewModel: ObservableObject {
             statusText = "引擎返回无效着法：\(move)"
             return
         }
+        pushSnapshot()
         state.apply(from: from, to: to)
         moveHistory.append(move)
         lastMove = (from, to)
@@ -284,9 +345,11 @@ final class GameViewModel: ObservableObject {
         }
         state.sideToMove = sideToMove
         playerSide = sideToMove
+        boardFlipped = (sideToMove == .black)
         isEditing = false
         paletteSelection = nil
         moveHistory = []
+        resetHistory()
         lastMove = nil
         let fen = state.fen()
         customStartFEN = fen
@@ -332,7 +395,9 @@ final class GameViewModel: ObservableObject {
         if let err = newState.validationError() { return "棋子位置不合理：\(err)" }
         state = newState
         playerSide = preferredPlayerSide(default: state.sideToMove)
+        boardFlipped = (playerSide == .black)
         moveHistory = []
+        resetHistory()
         customStartFEN = state.fen()
         lastMove = nil
         resultText = nil
@@ -353,6 +418,7 @@ final class GameViewModel: ObservableObject {
         }
         state = newState
         moveHistory = []
+        resetHistory()
         customStartFEN = nil
         lastMove = nil
         resultText = nil
@@ -391,8 +457,10 @@ final class GameViewModel: ObservableObject {
     func newGame() {
         state = GameState()
         moveHistory = []
+        resetHistory()
         customStartFEN = nil
         playerSide = preferredPlayerSide(default: .red)
+        boardFlipped = (playerSide == .black)
         lastMove = nil
         resultText = nil
         isEditing = false

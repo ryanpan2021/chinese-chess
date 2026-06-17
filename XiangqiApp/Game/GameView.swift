@@ -101,6 +101,22 @@ struct GameView: View {
             HStack(spacing: 12) {
                 Button("摆棋") { vm.enterEditing() }
                     .buttonStyle(.bordered)
+                Button {
+                    vm.undoMove()
+                } label: {
+                    Label("悔棋", systemImage: "arrow.uturn.backward")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!vm.canUndo || vm.aiThinking || vm.isEditing)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.5).onEnded { _ in vm.undoAll() }
+                )
+                Button {
+                    vm.toggleBoardFlip()
+                } label: {
+                    Label("翻转", systemImage: "arrow.up.arrow.down")
+                }
+                .buttonStyle(.bordered)
                 Button("导入FEN") { fenInput = ""; fenError = nil; showFENImport = true }
                     .buttonStyle(.bordered)
                 Button("图片识别") {
