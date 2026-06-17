@@ -105,6 +105,8 @@ struct GameView: View {
                     vm.undoMove()
                 } label: {
                     Label("悔棋", systemImage: "arrow.uturn.backward")
+                        .labelStyle(.titleAndIcon)
+                        .fixedSize()
                 }
                 .buttonStyle(.bordered)
                 .disabled(!vm.canUndo || vm.aiThinking || vm.isEditing)
@@ -115,6 +117,8 @@ struct GameView: View {
                     vm.toggleBoardFlip()
                 } label: {
                     Label("翻转", systemImage: "arrow.up.arrow.down")
+                        .labelStyle(.titleAndIcon)
+                        .fixedSize()
                 }
                 .buttonStyle(.bordered)
                 Button("导入FEN") { fenInput = ""; fenError = nil; showFENImport = true }
