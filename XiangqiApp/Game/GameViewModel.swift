@@ -82,7 +82,7 @@ final class GameViewModel: ObservableObject {
         let moveCount: Int
     }
     /// 局面快照栈：栈底为初始局面（新局/摆棋/导入后的起点）。
-    @Published private(set) var undoStack: [Snapshot] = []
+    @Published private var undoStack: [Snapshot] = []
 
     /// 是否可悔棋（已走至少一步）。
     var canUndo: Bool { !undoStack.isEmpty }
